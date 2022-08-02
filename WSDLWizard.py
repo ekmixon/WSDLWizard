@@ -53,17 +53,17 @@ class BurpExtender(IBurpExtender, IContextMenuFactory):
 
     # Create a menu item if the appropriate section of the UI is selected
     def createMenuItems(self, invocation):
-        
+
         menu = []
 
         # Which part of the interface the user selects
         ctx = invocation.getInvocationContext()
 
         # Message Viewer Req/Res, Site Map Table, and Proxy History will show menu item if selected by the user
-        if ctx == 2 or ctx == 3 or  ctx == 4 or ctx == 5 or ctx == 6:
+        if ctx in [2, 3, 4, 5, 6]:
             menu.append(JMenuItem("Scan for WSDL Files", None, actionPerformed=lambda x, inv=invocation: self.wsdlScan(inv)))
 
-        return menu if menu else None
+        return menu or None
 
     def wsdlScan(self, invocation):
 
@@ -124,23 +124,25 @@ class BurpExtender(IBurpExtender, IContextMenuFactory):
         # Get the request, request method, 1kb of the response, and full URL
         requestString = self._helpers.bytesToString(siteMapMessage.getRequest())
         requestMethod = self._helpers.analyzeRequest(siteMapMessage.getRequest()).getMethod()
-        responseString = self._helpers.bytesToString(siteMapMessage.getResponse())[0:MESSAGE_LIMIT]
+        responseString = self._helpers.bytesToString(siteMapMessage.getResponse())[
+            :MESSAGE_LIMIT
+        ]
+
         messageUrl = str(self._helpers.analyzeRequest(siteMapMessage).getUrl())
         messageUrlLowerExt = messageUrl[:-4] + messageUrl[-4:].lower()
-        
+
         # Check if ?wsdl is in the URL
         if '?wsdl' in messageUrl.lower() or '.wsdl' in messageUrl.lower() and messageUrlLowerExt not in self.foundWsdlList:
             self.foundWsdlList.append(messageUrlLowerExt)
+        elif "=" in messageUrl:
+            # Parse out the host and path of the URL, leaving out any parameters (wsdl files don't follow parameters)
+            parsedURL = urlparse(messageUrl)
+            noParamsURL = f'{parsedURL.scheme}://{parsedURL.netloc}{parsedURL.path}'
+            if noParamsURL not in self.detectedUrlList:
+                self.detectedUrlList.append(noParamsURL)
+
         else:
-            # Check if parameters are in the URL
-            if "=" not in messageUrl:
-                self.detectedUrlList.append(messageUrl)
-            else:
-                # Parse out the host and path of the URL, leaving out any parameters (wsdl files don't follow parameters)
-                parsedURL = urlparse(messageUrl)
-                noParamsURL = parsedURL.scheme + '://' + parsedURL.netloc + parsedURL.path
-                if noParamsURL not in self.detectedUrlList:
-                    self.detectedUrlList.append(noParamsURL)
+            self.detectedUrlList.append(messageUrl)
         
     # Use Python urllib2
     # Generates URLs with ?wsdl extension based on valid site map URLs and tests them for valid wsdl responses
